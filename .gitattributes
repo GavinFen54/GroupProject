@@ -1,0 +1,29 @@
+# Normalise text files
+* text=auto
+
+# Unity YAML: keep LF and treat as text so diffs/merges are readable
+*.unity    text eol=lf
+*.prefab   text eol=lf
+*.asset    text eol=lf
+*.mat      text eol=lf
+*.meta     text eol=lf
+*.controller text eol=lf
+*.anim     text eol=lf
+*.cs       text eol=lf diff=csharp
+
+# Binary art/audio: never try to diff or merge
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.tga   binary
+*.psd   binary
+*.exr   binary
+*.hdr   binary
+*.fbx   binary
+*.FBX   binary
+*.obj   binary
+*.wav   binary
+*.mp3   binary
+*.ogg   binary
+*.ttf   binary
+*.otf   binary
