@@ -17,21 +17,40 @@ namespace ArcherVR
         public float armDelay = 1f;
 
         Transform head;
+        Transform rig;
         bool loading;
 
-        void Start()
+        // Look the player up lazily: after a scene change (e.g. arriving from the S0 prologue)
+        // the camera may not be ready yet in Start, so keep trying until it is.
+        void FindPlayer()
         {
-            var cam = Camera.main;
-            if (cam != null) head = cam.transform;
+            if (rig == null)
+            {
+                var origin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
+                if (origin != null)
+                {
+                    rig = origin.transform;
+                    if (origin.Camera != null) head = origin.Camera.transform;
+                }
+            }
+            if (head == null && Camera.main != null) head = Camera.main.transform;
+        }
+
+        bool Inside(Transform t)
+        {
+            if (t == null) return false;
+            var d = t.position - transform.position;
+            if (Mathf.Abs(d.y) > verticalTolerance) return false;
+            d.y = 0f;
+            return d.sqrMagnitude <= radius * radius;
         }
 
         void Update()
         {
-            if (loading || head == null || Time.timeSinceLevelLoad < armDelay) return;
-            var d = head.position - transform.position;
-            if (Mathf.Abs(d.y) > verticalTolerance) return;
-            d.y = 0f;
-            if (d.sqrMagnitude <= radius * radius)
+            if (loading || Time.timeSinceLevelLoad < armDelay) return;
+            if (head == null || rig == null) FindPlayer();
+            // Either the player's head or their feet (rig) on the circle counts.
+            if (Inside(head) || Inside(rig))
             {
                 loading = true;
                 SceneManager.LoadScene(sceneName);

@@ -41,7 +41,8 @@ namespace ArcherVR.EditorTools
         static readonly string[] BossSearch = { "orc", "giant", "drakonit" };
 
         // Skyboxes from Fantasy Skybox FREE, picked per story beat.
-        const string SkyExposition = "Assets/Fantasy Skybox FREE/Panoramics/FS002/FS002_Day.mat";
+        const string SkyPrologue = "Assets/Fantasy Skybox FREE/Panoramics/FS002/FS002_Sunrise.mat";
+        const string SkyExposition ="Assets/Fantasy Skybox FREE/Panoramics/FS002/FS002_Day.mat";
         const string SkyBattle = "Assets/Fantasy Skybox FREE/Panoramics/FS002/FS002_Sunset.mat";
         const string SkyResolution = "Assets/Fantasy Skybox FREE/Panoramics/FS003/FS003_Sunrise.mat";
         const string GrassTex = "Assets/Fantasy Skybox FREE/Scenes/Textures (Terrain)/Texture_Grass_Diffuse.png";
@@ -78,17 +79,94 @@ namespace ArcherVR.EditorTools
         public static void BuildScenes()
         {
             EnsureFolders();
-            var s1 = BuildScene(GameFlow.SceneExposition, Beat.Exposition);
-            var s2 = BuildScene(GameFlow.SceneBattle, Beat.Battle);
-            var s4 = BuildScene(GameFlow.SceneResolution, Beat.Resolution);
-            EditorBuildSettings.scenes = new[]
-            {
-                new EditorBuildSettingsScene(s1, true),
-                new EditorBuildSettingsScene(s2, true),
-                new EditorBuildSettingsScene(s4, true),
-            };
-            EditorSceneManager.OpenScene(s1);
+            var s0 = BuildScene(GameFlow.ScenePrologue, Beat.Prologue);
+            BuildScene(GameFlow.SceneExposition, Beat.Exposition);
+            BuildScene(GameFlow.SceneBattle, Beat.Battle);
+            BuildScene(GameFlow.SceneResolution, Beat.Resolution);
+            SetBuildOrder();
+            EditorSceneManager.OpenScene(s0);
             Debug.Log("[Archer VR] Scenes built and added to Build Settings.");
+        }
+
+        static void SetBuildOrder()
+        {
+            var list = new List<EditorBuildSettingsScene>();
+            foreach (var n in new[] { GameFlow.ScenePrologue, GameFlow.SceneExposition, GameFlow.SceneBattle, GameFlow.SceneResolution })
+            {
+                var p = $"{SceneDir}/{n}.unity";
+                if (AssetDatabase.LoadAssetAtPath<SceneAsset>(p) != null) list.Add(new EditorBuildSettingsScene(p, true));
+            }
+            EditorBuildSettings.scenes = list.ToArray();
+        }
+
+        /// <summary>
+        /// Adds the new S0 Prologue scene and the warm-up target in S2 WITHOUT rebuilding
+        /// S1/S2/S4, so any changes the team made to those scenes are kept.
+        /// </summary>
+        [MenuItem("Archer VR/Add Prologue + Target Practice (keeps your edits)", priority = 31)]
+        public static void AddPrologueAndPractice()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            EnsureFolders();
+            var s0 = BuildScene(GameFlow.ScenePrologue, Beat.Prologue);
+
+            var battle = $"{SceneDir}/{GameFlow.SceneBattle}.unity";
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(battle) != null)
+            {
+                var scene = EditorSceneManager.OpenScene(battle, OpenSceneMode.Single);
+                var wm = Object.FindFirstObjectByType<WaveManager>();
+                var stand = scene.GetRootGameObjects().Select(g => g.transform.Find("PlayerStandPoint")).FirstOrDefault(t => t != null);
+                var rig = Object.FindFirstObjectByType<XROrigin>();
+                var tower = scene.GetRootGameObjects().FirstOrDefault(g => g.name == "Tower");
+                if (wm != null && stand != null && rig != null && wm.practiceTarget == null)
+                {
+                    var f = rig.transform.forward; f.y = 0; f.Normalize();
+                    wm.practiceTarget = BuildPracticeTarget(stand.position, f, tower != null ? tower.transform : null);
+                    EditorUtility.SetDirty(wm);
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    EditorSceneManager.SaveScene(scene);
+                    Debug.Log("[Archer VR] Added the warm-up target to S2_Battle.");
+                }
+                else if (wm != null && wm.practiceTarget != null)
+                    Debug.Log("[Archer VR] S2_Battle already has a warm-up target.");
+                else
+                    Debug.LogWarning("[Archer VR] Could not find WaveManager / PlayerStandPoint / XR Origin in S2_Battle.");
+            }
+
+            SetBuildOrder();
+            EditorSceneManager.OpenScene(s0);
+            Debug.Log("[Archer VR] S0_Prologue built. Build order: S0 → S1 → S2 → S4.");
+        }
+
+        /// <summary>A floating archery target ~6 m in front of the player's face, parented to the tower so it sinks with it.</summary>
+        static PracticeTarget BuildPracticeTarget(Vector3 standPos, Vector3 f, Transform parent)
+        {
+            var go = new GameObject("Practice Target");
+            if (parent != null) go.transform.SetParent(parent, true);
+            go.transform.position = standPos + f * 6f + Vector3.up * 1.55f;
+            go.transform.rotation = Quaternion.LookRotation(-f);
+
+            var white = Mat("Target_White", new Color(0.95f, 0.93f, 0.88f));
+            var red = Mat("Target_Red", new Color(0.8f, 0.12f, 0.1f));
+            var gold = Mat("Target_Gold", new Color(1f, 0.78f, 0.2f), unlit: true);
+            var wood = Mat("BowWood", new Color(0.35f, 0.22f, 0.12f));
+            (float r, Material m)[] rings = { (0.62f, wood), (0.56f, white), (0.42f, red), (0.28f, white), (0.14f, gold) };
+            for (int i = 0; i < rings.Length; i++)
+            {
+                var ring = Prim(PrimitiveType.Cylinder, "Ring " + i, go.transform, new Vector3(0, 0, 0.012f * i), new Vector3(rings[i].r * 2f, 0.03f, rings[i].r * 2f), rings[i].m);
+                ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+
+            var col = go.AddComponent<BoxCollider>();
+            col.size = new Vector3(1.25f, 1.25f, 0.2f);
+            var rb = go.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            go.AddComponent<Health>();
+            var pt = go.AddComponent<PracticeTarget>();
+
+            var label = Label3D("Warm up: hit the target!", go.transform.position + Vector3.up * 0.95f, f, go.transform, 0.05f);
+            label.transform.rotation = Quaternion.LookRotation(f);
+            return pt;
         }
 
         /// <summary>
@@ -499,7 +577,7 @@ namespace ArcherVR.EditorTools
 
         // ------------------------------------------------------------------ scenes
 
-        enum Beat { Exposition, Battle, Resolution }
+        enum Beat { Prologue, Exposition, Battle, Resolution }
 
         class Layout
         {
@@ -531,6 +609,7 @@ namespace ArcherVR.EditorTools
 
             switch (beat)
             {
+                case Beat.Prologue: BuildPrologue(L, flow); break;
                 case Beat.Exposition: BuildExposition(L, flow); break;
                 case Beat.Battle: BuildBattle(L, flow); break;
                 case Beat.Resolution: BuildResolution(L, flow); break;
@@ -622,7 +701,7 @@ namespace ArcherVR.EditorTools
 
         static void SetSky(Beat beat)
         {
-            var path = beat == Beat.Exposition ? SkyExposition : beat == Beat.Battle ? SkyBattle : SkyResolution;
+            var path = beat == Beat.Prologue ? SkyPrologue : beat == Beat.Exposition ? SkyExposition : beat == Beat.Battle ? SkyBattle : SkyResolution;
             var sky = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (sky != null) RenderSettings.skybox = sky;
             RenderSettings.fog = true;
@@ -780,6 +859,66 @@ namespace ArcherVR.EditorTools
             return go;
         }
 
+        // S0 — Prologue: a quiet camp at dawn, out from the tower. Story text prepares the player
+        // for the fight, then it moves on to S1 (walk to the tower) automatically or via Skip.
+        static void BuildPrologue(Layout L, GameFlow flow)
+        {
+            var f = L.front;
+            var right = Vector3.Cross(Vector3.up, f);
+            var spot = L.center + f * (L.radius + 26f);
+            PlaceRig(L, spot, -f);
+            SetLocomotion(L.rig, move: false, teleport: false);
+
+            var env = new GameObject("S0 Prologue").transform;
+
+            // Story panel between the player and the tower (the tower stays visible beyond it).
+            var panel = WorldCanvas("Story Panel", spot - f * 2.4f + Vector3.up * 1.65f, -f, new Vector2(1150, 430), env);
+            panel.GetComponentInChildren<Image>().color = new Color(0.06f, 0.05f, 0.04f, 0.72f);
+            var body = AddText(panel.transform, "", 54, new Vector2(0, 0.14f), new Vector2(1, 1));
+            var group = body.gameObject.AddComponent<CanvasGroup>();
+            var seq = new GameObject("Prologue").AddComponent<PrologueSequence>();
+            seq.transform.SetParent(env, true);
+            seq.body = body;
+            seq.textGroup = group;
+            AddButton(panel.transform, "Skip", new Vector2(0.82f, 0.02f), new Vector2(0.98f, 0.17f), seq.Continue);
+
+            // A small camp: campfire, banners and a row of stakes facing the field.
+            var fire = new GameObject("Campfire").transform;
+            fire.SetParent(env, true);
+            fire.position = spot - f * 1.6f + right * 2.2f;
+            var wood = Mat("BowWood", new Color(0.35f, 0.22f, 0.12f));
+            for (int i = 0; i < 4; i++)
+            {
+                var log = Prim(PrimitiveType.Cylinder, "Log", fire, new Vector3(0, 0.1f, 0), new Vector3(0.12f, 0.45f, 0.12f), wood);
+                log.transform.localRotation = Quaternion.Euler(80f, i * 45f, 0f);
+            }
+            Prim(PrimitiveType.Sphere, "Flame", fire, new Vector3(0, 0.35f, 0), new Vector3(0.35f, 0.55f, 0.35f), Mat("Flame", new Color(1f, 0.55f, 0.15f), unlit: true));
+            var light = new GameObject("Fire Light").AddComponent<Light>();
+            light.transform.SetParent(fire, false);
+            light.transform.localPosition = new Vector3(0, 0.8f, 0);
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.6f, 0.3f);
+            light.range = 8f;
+            light.intensity = 2.5f;
+
+            foreach (var (name, offset) in new[] { ("Banner_a_post", -right * 3f - f * 0.5f), ("Banner_b_post", right * 3.5f + f * 0.8f) })
+            {
+                var pf = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/StoneKeep/Prefabs/{name}.prefab");
+                if (pf == null) continue;
+                var b = (GameObject)PrefabUtility.InstantiatePrefab(pf, env);
+                b.transform.position = spot + offset;
+                b.transform.rotation = Quaternion.LookRotation(-f);
+            }
+            var spikes = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/StoneKeep/Prefabs/Wood_spikes.prefab");
+            if (spikes != null)
+                for (int i = -2; i <= 2; i++)
+                {
+                    var sp = (GameObject)PrefabUtility.InstantiatePrefab(spikes, env);
+                    sp.transform.position = spot + f * 4f + right * (i * 3f);
+                    sp.transform.rotation = Quaternion.LookRotation(f);
+                }
+        }
+
         // S1 — Exposition: start on the ground facing the tower, the army visible beyond it.
         // Walk (left stick) to the glowing circle at the tower door to climb to the top (S2).
         static void BuildExposition(Layout L, GameFlow flow)
@@ -890,6 +1029,7 @@ namespace ArcherVR.EditorTools
             wm.spawnPoints = spawns.ToArray();
             wm.attackRingRadius = L.radius + 2.5f;
             wm.musicSource = music;
+            wm.practiceTarget = BuildPracticeTarget(L.topStand, f, L.tower);
             wm.waves = new[]
             {
                 new Wave { name = "Wave 1 - Scouts",        entries = new[] { E(basic, 10) },                         spawnInterval = 1.0f },

@@ -11,6 +11,7 @@ namespace ArcherVR
     /// </summary>
     public class GameFlow : MonoBehaviour
     {
+        public const string ScenePrologue = "S0_Prologue";
         public const string SceneExposition = "S1_Exposition";
         public const string SceneBattle = "S2_Battle";
         public const string SceneResolution = "S4_Resolution";

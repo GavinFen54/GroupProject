@@ -25,6 +25,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
@@ -60,3 +61,7 @@ ignore.conf
 
 # Stray test file
 /_probe.txt
+
+# Unity crash-recovery backups (local only)
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta

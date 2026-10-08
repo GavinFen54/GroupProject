@@ -66,12 +66,28 @@ namespace ArcherVR
         public float NextWaveCountdown { get; private set; }
         public bool Finished { get; private set; }
         public bool WaitingForBow => waitForBowGrab && !Bow.EverGrabbed && CurrentWave == 0;
+        /// <summary>True while the warm-up target is up and not yet hit.</summary>
+        public bool InPractice => practiceTarget != null && practiceStarted && !practiceTarget.Done;
+        public bool PracticeJustDone => practiceTarget != null && practiceTarget.Done && CurrentWave == 0;
+
+        [Header("Warm-up")]
+        [Tooltip("Optional target that must be hit after grabbing the bow, before the first wave.")]
+        public PracticeTarget practiceTarget;
+        bool practiceStarted;
 
         IEnumerator Start()
         {
             // Give RuntimeNavMesh a frame to bake.
             yield return null;
             while (waitForBowGrab && !Bow.EverGrabbed) yield return null;
+
+            if (practiceTarget != null)
+            {
+                practiceStarted = true;
+                practiceTarget.Show();
+                while (!practiceTarget.Done) yield return null;
+            }
+
             yield return Countdown(firstWaveDelay);
 
             for (int i = 0; i < waves.Length; i++)

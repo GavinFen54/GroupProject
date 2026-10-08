@@ -91,9 +91,13 @@ namespace ArcherVR
             if (grab.isSelected) yield break;
             if (rb != null)
             {
+                // Velocity can only be set on a non-kinematic body, so clear it first.
+                if (!rb.isKinematic)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
                 rb.isKinematic = true;
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
             }
             transform.SetPositionAndRotation(homePos, homeRot);
         }
